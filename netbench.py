@@ -8,7 +8,6 @@ Port range: 41710 to 41719
 import os
 import sys
 import time
-import array
 import socket
 
 def Client(argv):
@@ -26,23 +25,33 @@ def Client(argv):
         print('Connection error: ', err)
         sys.exit(1)
 
-    ReceiveAck(client_socket_TCP)
     #Test 1 Server to Client
     print('\nStart test1 - large transfer\nFrom server to client')
-    # ReceiveInto(200000000, client_socket_TCP)
-    TestReceive(200000000, 1024, client_socket_TCP)
+    #Before receiving the data, send the ready acknowledgement
+    client_socket_TCP.send(b'ok')
+    print('Acknowledgment sent')
+    Receive(200000000, 1024, client_socket_TCP)
 
     #Test 1 Client to Server
     print('From client to server')
-    print('* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *')
-    # SendAll(200000000, 'client', client_socket_TCP)
+    #Before sending the data, wait for the ready acknowledgement
+    msg = client_socket_TCP.recv(50)
+    print('Acknowledgment received: ', msg.decode())
     Send(200000000, 1024, 'client', client_socket_TCP)
+
 
     #Test 2 Server to Client
     print('\nStart test2 - small transfer\nFrom server to client')
-    TestReceive(10000, 1024, client_socket_TCP)
+    #Before receiving the data, send the ready acknowledgement
+    client_socket_TCP.send(b'ok')
+    print('Acknowledgment sent')
+    Receive(10000, 1024, client_socket_TCP)
 
     #Test 2 Client to Server
+    print('From client to server')
+    #Before sending the data, wait for the ready acknowledgement
+    msg = client_socket_TCP.recv(50)
+    print('Acknowledgment received: ', msg.decode())
     Send(10000, 1024, 'client', client_socket_TCP)
 
     #Save the Client TCP port for the UDP socket
@@ -56,11 +65,18 @@ def Client(argv):
     client_socket_UDP.bind(('', client_address[1]))
 
     #Test 3 Server to Client
-    print('\nStart test3 - UDP pingpong\nFrom server to client\n* * * * *')
+    print('\nStart test3 - UDP pingpong\nFrom server to client')
+    #Before receiving the data, send the ready acknowledgement
+    client_socket_UDP.sendto(b'ok', (argv[1], server_port))
+    print('Acknowledgment sent')
     PPReceive(5, 1024, client_socket_UDP)
 
+
     #Test 3 Client to Server
-    print('From client to server')
+    print('\nFrom client to server')
+    #Before sending the data, wait for the ready acknowledgement
+    msg, _ = client_socket_UDP.recvfrom(50)
+    print('Acknowledgment received: ', msg.decode())
     PPSend(5, 5, 1024, client_socket_UDP, (argv[1], server_port))
     print('End of all benchmarks')
 
@@ -82,25 +98,36 @@ def Server():
     #Accept Client connection
     client_socket_TCP, client_address = server_socket_TCP.accept()
     print('A client has connected and it is at:', client_address)
-
-    SendAck(client_socket_TCP)
+              
     #Test 1 Server to Client
     print('\nStart test 1 - large transfer\nFrom server to client')
-    # SendAll(200000000, 'server', client_socket_TCP)
+    #Before sending the data, wait for the ready acknowledgement
+    msg = client_socket_TCP.recv(50)
+    print('Acknowledgment received: ', msg.decode())
     Send(200000000, 1024, 'server', client_socket_TCP)
+
 
     #Test 1 Client to Server
     print('From client to server')
-    # ReceiveInto(200000000, client_socket_TCP)
-    TestReceive(200000000, 1024, client_socket_TCP)
+    #Before receiving the data, send the ready acknowledgement
+    client_socket_TCP.send(b'ok')
+    print('Acknowledgment sent')
+    Receive(200000000, 1024, client_socket_TCP)
 
     #Test 2 Server to Client
     print('\nStart test2 - small transfer\nFrom server to client')
+    #Before sending the data, wait for the ready acknowledgement
+    msg = client_socket_TCP.recv(50)
+    print('Acknowledgment received: ', msg.decode())
     Send(10000, 1024, 'server', client_socket_TCP)
+
 
     #Test 2 Client to Server
     print('From client to server')
-    TestReceive(10000, 1024, client_socket_TCP)
+    #Before receiving the data, send the ready acknowledgement
+    client_socket_TCP.send(b'ok')
+    print('Acknowledgment sent')
+    Receive(10000, 1024, client_socket_TCP)
 
     #Close both client and server TCP socket
     server_socket_TCP.close()
@@ -111,19 +138,28 @@ def Server():
     #Locate the same port as the TCP socket for the UDP socket
     server_socket_UDP.bind(('', server_port))
 
+
     #Test 3 Server to Client
     print('\nStart test3 - UDP pingpong\nFrom server to client')
+    #Before sending the data, wait for the ready acknowledgement
+    msg, _ = server_socket_UDP.recvfrom(50)
+    print('Acknowledgment received: ', msg.decode())
     PPSend(5, 5, 1024, server_socket_UDP, client_address)
 
+
     #Test 3 Client to Server
-    print('From client to server\n* * * * *')
+    print('From client to server')
+    #Before receiving the data, send the ready acknowledgement
+    server_socket_UDP.sendto(b'ok', client_address)
+    print('Acknowledgment sent')
     PPReceive(5, 1024, server_socket_UDP)
-    print('End of all benchmarks')
+    print('\nEnd of all benchmarks')
 
     #Close the server side UDP socket
     server_socket_UDP.close()
 
     return 0
+
 
 def Send(data_size, buff_size, send_side, target_socket: socket):
     #Generate a random byte of a given size (20000000 bytes)
@@ -155,7 +191,7 @@ def Send(data_size, buff_size, send_side, target_socket: socket):
         print(f'Throughput(from client to server): {round((total_sent/1000000)/(end_time - start_time),6)} Mb/s')
     return 0
 
-def TestReceive(data_size, buff_size, self_socket: socket):
+def Receive(data_size, buff_size, self_socket: socket):
     # receive data using socket.recv_into() with the specified buffer size
     received_data = bytearray()
     while len(received_data) < data_size:
@@ -165,31 +201,6 @@ def TestReceive(data_size, buff_size, self_socket: socket):
             break
         received_data += data[:num_bytes_received]
     print(f'Received total: {len(received_data)} bytes')
-
-def SendAck(target_socket: socket):
-    target_socket.send(b'OK')
-    print("Acknowlegement sent")
-
-def ReceiveAck(self_socket: socket, buff_size = 1024):
-    data = self_socket.recv(buff_size)
-    print(data)
-
-def Receive(data_size, block_size, self_socket: socket):
-    #For collecting the incoming data
-    date_received = b''
-    # with tqdm(total=None, desc='Receiving data', unit='KB') as pbar:
-    while len(date_received) < data_size:
-        #receive the incoming data using socket.recv() with a pre-defined size
-        data_block = self_socket.recv(block_size)
-        #Terminate if the block is empty
-        if not data_block:
-            break
-        #Append the data received to the variable
-        date_received += data_block
-            # pbar.update(1)
-    #Display the number of bytes received
-    print(f'Received total: {len(date_received)} bytes')
-    return 0
 
 def PPSend(data_size, num_msg, bufsize, self_socket: socket, target_address: tuple):
     #Generate a random byte of a given size (5 bytes)
@@ -218,11 +229,15 @@ def PPSend(data_size, num_msg, bufsize, self_socket: socket, target_address: tup
 
 def PPReceive(num_msg, bufsize, self_socket: socket):
     #A for loop to receive a pre-defined number of message 
+    num_received = 0
+    update_progress(0)
     for _ in range(num_msg):
         #Receive the data from the target address using socket.recvfrom() (UDP)
         data, address = self_socket.recvfrom(bufsize)
         #Send to data to the target address using socket.sendto() (UDP)
         self_socket.sendto(data, address)
+        num_received += 1
+        update_progress(int((num_received / num_msg) * 100))
     return 0
 
 def update_progress(progress):
