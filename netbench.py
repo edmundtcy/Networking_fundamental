@@ -10,15 +10,15 @@ import sys
 import time
 import array
 import socket
-from tqdm import tqdm
 
 def Client(argv):
-
+    server_port = 41711
     #Start a client side TCP socket
     client_socket_TCP = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket_TCP.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     try:
         #Connecting to the server address given by the argument and pre-located port
-        client_socket_TCP.connect((argv[1], 41710))
+        client_socket_TCP.connect((argv[1], server_port))
         print('Client has connected to server at:', client_socket_TCP.getpeername())
         print('Client\'s address:', client_socket_TCP.getsockname())
     except socket.error as err:
@@ -26,20 +26,21 @@ def Client(argv):
         print('Connection error: ', err)
         sys.exit(1)
 
+    ReceiveAck(client_socket_TCP)
     #Test 1 Server to Client
     print('\nStart test1 - large transfer\nFrom server to client')
-    ReceiveInto(200000000, client_socket_TCP)
-    # Receive(200000000, 1024, client_socket_TCP)
+    # ReceiveInto(200000000, client_socket_TCP)
+    TestReceive(200000000, 1024, client_socket_TCP)
 
     #Test 1 Client to Server
     print('From client to server')
     print('* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *')
-    SendAll(200000000, 'client', client_socket_TCP)
-    # Send(200000000, 1024, 'client', client_socket_TCP)
+    # SendAll(200000000, 'client', client_socket_TCP)
+    Send(200000000, 1024, 'client', client_socket_TCP)
 
     #Test 2 Server to Client
     print('\nStart test2 - small transfer\nFrom server to client')
-    Receive(10000, 1024, client_socket_TCP)
+    TestReceive(10000, 1024, client_socket_TCP)
 
     #Test 2 Client to Server
     Send(10000, 1024, 'client', client_socket_TCP)
@@ -60,7 +61,7 @@ def Client(argv):
 
     #Test 3 Client to Server
     print('From client to server')
-    PPSend(5, 5, 1024, client_socket_UDP, (argv[1], 41710))
+    PPSend(5, 5, 1024, client_socket_UDP, (argv[1], server_port))
     print('End of all benchmarks')
 
     #Close the client side UDP socket
@@ -69,11 +70,12 @@ def Client(argv):
     return 0
 
 def Server():
-
+    server_port = 41711
     #Start a server side TCP socket
     server_socket_TCP = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket_TCP.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     #Locate the port for the TCP socket
-    server_socket_TCP.bind(('', 41710))
+    server_socket_TCP.bind(('', server_port))
     #Listen for client action
     server_socket_TCP.listen()
     print('Server is ready. Listening address:', server_socket_TCP.getsockname())
@@ -81,16 +83,16 @@ def Server():
     client_socket_TCP, client_address = server_socket_TCP.accept()
     print('A client has connected and it is at:', client_address)
 
+    SendAck(client_socket_TCP)
     #Test 1 Server to Client
-    print('\nStart test1 - large transfer\nFrom server to client')
-    print('* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *')
-    SendAll(200000000, 'server', client_socket_TCP)
-    # Send(200000000, 1024, 'server', client_socket_TCP)
+    print('\nStart test 1 - large transfer\nFrom server to client')
+    # SendAll(200000000, 'server', client_socket_TCP)
+    Send(200000000, 1024, 'server', client_socket_TCP)
 
     #Test 1 Client to Server
     print('From client to server')
-    ReceiveInto(200000000, client_socket_TCP)
-    # Receive(200000000, 1024, client_socket_TCP)
+    # ReceiveInto(200000000, client_socket_TCP)
+    TestReceive(200000000, 1024, client_socket_TCP)
 
     #Test 2 Server to Client
     print('\nStart test2 - small transfer\nFrom server to client')
@@ -98,7 +100,7 @@ def Server():
 
     #Test 2 Client to Server
     print('From client to server')
-    Receive(10000, 1024, client_socket_TCP)
+    TestReceive(10000, 1024, client_socket_TCP)
 
     #Close both client and server TCP socket
     server_socket_TCP.close()
@@ -107,7 +109,7 @@ def Server():
     #Start a server side UDP socket
     server_socket_UDP = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     #Locate the same port as the TCP socket for the UDP socket
-    server_socket_UDP.bind(('', 41710))
+    server_socket_UDP.bind(('', server_port))
 
     #Test 3 Server to Client
     print('\nStart test3 - UDP pingpong\nFrom server to client')
@@ -123,63 +125,54 @@ def Server():
 
     return 0
 
-def SendAll(data_size, send_side, target_socket: socket):
-    #Generate a random byte of a given size (20000000)
-    data = os.urandom(data_size)
-    #Start the timer
-    start_time = time.perf_counter()
-    #Send the data to the target socket using socket.sendall()
-    target_socket.sendall(data)
-    #Stop the timer
-    end_time = time.perf_counter()
-    #Displaying performance data
-    print(f'Sent total: {data_size} bytes')
-    print(f'Elapsed time: {round(end_time - start_time, 6)}s')
-    if send_side == 'server':
-        print(f'Throughput(from server to client): {round((data_size/1000000)/(end_time - start_time),6)} Mb/s')
-    elif send_side == 'client':
-        print(f'Throughput(from client to server): {round((data_size/1000000)/(end_time - start_time),6)} Mb/s')
-    return 0
-
-def ReceiveInto(data_size, self_socket: socket):
-    #Pre-allocate a byte array of a give size as buffer for the socket.recv_into()
-    buffer = array.array('b', b'\x00' * data_size)
-    #Receive the data using socket.recv_into()
-    self_socket.recv_into(buffer)
-    #Display the number of bytes received
-    print(f'Received total: {len(buffer)} bytes')
-    return 0
-
-def Send(data_size, block_size, send_side, target_socket: socket):
+def Send(data_size, buff_size, send_side, target_socket: socket):
     #Generate a random byte of a given size (20000000 bytes)
     data = os.urandom(data_size)
     #i is used for the wile loop
     i = 0
     #total sent is the total amount of data sent in byte
     total_sent = 0
-    #Start the timer
+    #Start the timer and progress bar
+    update_progress(0)
     start_time = time.perf_counter()
-    # with tqdm(total=None, desc='Sending data', unit='KB') as pbar:
-    while i < len(data):
+    while i < data_size:
         #Slice the data in to blocks of pre-defined size
-        data_block = data[i:i+block_size]
         #Send to data to the target socket using socket.send()
-        sent = target_socket.send(data_block)
+        sent = target_socket.send(data[i:i+buff_size])
         #Count the btyes of data sent
         total_sent += sent
-        #Update i for while loop
-        i += block_size
-            # pbar.update(1)
+        #Update i for while loop and progress bar
+        i += buff_size
+        update_progress(int((total_sent / data_size) * 100))
     #Stop the timer
     end_time = time.perf_counter()
     #Displaying performance data
-    print(f'Sent total: {total_sent} bytes')
+    print(f'\nSent total: {total_sent} bytes')
     print(f'Elapsed time: {round(end_time - start_time, 6)}s')
     if send_side == 'server':
         print(f'Throughput(from server to client): {round((total_sent/1000000)/(end_time - start_time),6)} Mb/s')
     elif send_side == 'client':
         print(f'Throughput(from client to server): {round((total_sent/1000000)/(end_time - start_time),6)} Mb/s')
     return 0
+
+def TestReceive(data_size, buff_size, self_socket: socket):
+    # receive data using socket.recv_into() with the specified buffer size
+    received_data = bytearray()
+    while len(received_data) < data_size:
+        data = bytearray(buff_size)
+        num_bytes_received = self_socket.recv_into(data, buff_size)
+        if not num_bytes_received:
+            break
+        received_data += data[:num_bytes_received]
+    print(f'Received total: {len(received_data)} bytes')
+
+def SendAck(target_socket: socket):
+    target_socket.send(b'OK')
+    print("Acknowlegement sent")
+
+def ReceiveAck(self_socket: socket, buff_size = 1024):
+    data = self_socket.recv(buff_size)
+    print(data)
 
 def Receive(data_size, block_size, self_socket: socket):
     #For collecting the incoming data
@@ -231,6 +224,10 @@ def PPReceive(num_msg, bufsize, self_socket: socket):
         #Send to data to the target address using socket.sendto() (UDP)
         self_socket.sendto(data, address)
     return 0
+
+def update_progress(progress):
+    sys.stdout.write('\r[{0}] {1}%'.format('*' * int(progress / 2.5), progress))
+    sys.stdout.flush()
 
 if __name__ == '__main__':
     if len(sys.argv) == 1:
