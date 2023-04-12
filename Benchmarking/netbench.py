@@ -11,7 +11,7 @@ import time
 import socket
 
 def Client(argv):
-    server_port = 41711
+    server_port = 41710
     #Start a client side TCP socket
     client_socket_TCP = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client_socket_TCP.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -35,7 +35,7 @@ def Client(argv):
     #Test 1 Client to Server
     print('From client to server')
     #Before sending the data, wait for the ready acknowledgement
-    msg = client_socket_TCP.recv(50)
+    msg = client_socket_TCP.recv(5)
     print('Acknowledgment received: ', msg.decode())
     Send(200000000, 1024, 'client', client_socket_TCP)
 
@@ -50,7 +50,7 @@ def Client(argv):
     #Test 2 Client to Server
     print('From client to server')
     #Before sending the data, wait for the ready acknowledgement
-    msg = client_socket_TCP.recv(50)
+    msg = client_socket_TCP.recv(5)
     print('Acknowledgment received: ', msg.decode())
     Send(10000, 1024, 'client', client_socket_TCP)
 
@@ -75,7 +75,7 @@ def Client(argv):
     #Test 3 Client to Server
     print('\nFrom client to server')
     #Before sending the data, wait for the ready acknowledgement
-    msg, _ = client_socket_UDP.recvfrom(50)
+    msg, _ = client_socket_UDP.recvfrom(5)
     print('Acknowledgment received: ', msg.decode())
     PPSend(5, 5, 1024, client_socket_UDP, (argv[1], server_port))
     print('End of all benchmarks')
@@ -86,7 +86,7 @@ def Client(argv):
     return 0
 
 def Server():
-    server_port = 41711
+    server_port = 41710
     #Start a server side TCP socket
     server_socket_TCP = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket_TCP.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -102,7 +102,7 @@ def Server():
     #Test 1 Server to Client
     print('\nStart test 1 - large transfer\nFrom server to client')
     #Before sending the data, wait for the ready acknowledgement
-    msg = client_socket_TCP.recv(50)
+    msg = client_socket_TCP.recv(5)
     print('Acknowledgment received: ', msg.decode())
     Send(200000000, 1024, 'server', client_socket_TCP)
 
@@ -117,7 +117,7 @@ def Server():
     #Test 2 Server to Client
     print('\nStart test2 - small transfer\nFrom server to client')
     #Before sending the data, wait for the ready acknowledgement
-    msg = client_socket_TCP.recv(50)
+    msg = client_socket_TCP.recv(5)
     print('Acknowledgment received: ', msg.decode())
     Send(10000, 1024, 'server', client_socket_TCP)
 
@@ -142,7 +142,7 @@ def Server():
     #Test 3 Server to Client
     print('\nStart test3 - UDP pingpong\nFrom server to client')
     #Before sending the data, wait for the ready acknowledgement
-    msg, _ = server_socket_UDP.recvfrom(50)
+    msg, _ = server_socket_UDP.recvfrom(5)
     print('Acknowledgment received: ', msg.decode())
     PPSend(5, 5, 1024, server_socket_UDP, client_address)
 
@@ -213,7 +213,7 @@ def PPSend(data_size, num_msg, bufsize, self_socket: socket, target_address: tup
         start_time = time.perf_counter()
         #Send to data to the target address using socket.sendto() (UDP)
         self_socket.sendto(data, (target_address[0],target_address[1]))
-        #Receive the data from the target address using socket.recvfrom() (UDP)
+        #Receive the data from the target address using socket.recvfrom() (UDP) as acknowledgement
         data, address = self_socket.recvfrom(bufsize)
         #End the timer
         end_time = time.perf_counter()
@@ -234,7 +234,7 @@ def PPReceive(num_msg, bufsize, self_socket: socket):
     for _ in range(num_msg):
         #Receive the data from the target address using socket.recvfrom() (UDP)
         data, address = self_socket.recvfrom(bufsize)
-        #Send to data to the target address using socket.sendto() (UDP)
+        #Send the data to the target address using socket.sendto() (UDP) as acknowledgement 
         self_socket.sendto(data, address)
         num_received += 1
         update_progress(int((num_received / num_msg) * 100))
